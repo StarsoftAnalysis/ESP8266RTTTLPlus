@@ -51,7 +51,9 @@ void loop (void) {
 }   
 ```
 
-See this [alarm clock software](https://github.com/StarsoftAnalysis/arduino-alarm-clock) for a much more elaborate use of ESP8266RTTTLPlus.
+For other examples, see the `examples` directory above.
+
+And for a complete project that uses ESP8266RTTTLPlus, See this [alarm clock software](https://github.com/StarsoftAnalysis/arduino-alarm-clock).
 
 ## Installation
 
@@ -82,3 +84,6 @@ All the functions in this library are in the `e8rtp` namespace.
   ready	    not started yet, or finished playing, or stopped
   playing
   paused
+
+## e8rtp::setVolume(int volume) -- change the volume at any time after setup().  See above for range of valid values.
+Returns the valid volume used.

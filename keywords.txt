@@ -5,3 +5,4 @@ reset	KEYWORD2
 stop	KEYWORD2
 pause	KEYWORD2
 resume	KEYWORD2
+setVolume   KEYWORD2

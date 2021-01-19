@@ -7,5 +7,6 @@ namespace e8rtp {
     void stop   (void);
     void pause  (void);
     void resume (void);
+    int  setVolume (int volume);
 
 } // namespace

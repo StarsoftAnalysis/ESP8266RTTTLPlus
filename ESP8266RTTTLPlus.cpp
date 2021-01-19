@@ -22,6 +22,7 @@
 /// tell caller what status is -- playing or finished, or set up but not started
 //  playing the tune: (or beginning it) -- argument to set length of inter-note gap
 //   - and volume
+//  change volume mid tune
 
 // NOTES
 // * tune buffer must remain static in memory while tune is playing
@@ -71,8 +72,8 @@ static bool tuneLoaded = false;
 static bool tuneAtStart = true; // FIXME needed?
 static bool tunePlaying = false;
 static int currentPitch = 0;
-static int currentDuration = 0;
-static int currentVolume = maxVolume / 2; // FIXME what range? 1..11, obviously
+static long unsigned currentDuration = 0;
+static int currentVolume = maxVolume / 2;
 static int buzzerPin = D1;  // reasonable default?
 
 static void nextChar (const char **bufferPtr) {
@@ -91,7 +92,8 @@ static void nextChar (const char **bufferPtr) {
     }
 }
 
-static void setVolume (int volume) {
+int setVolume (int volume) {
+    PRINTF("e8rtp: sV: previously cV=%d\n", currentVolume);
     if (volume < 0) {
         currentVolume = 0;
     } else if (volume > maxVolume) {
@@ -99,6 +101,8 @@ static void setVolume (int volume) {
     } else {
         currentVolume = volume;
     } 
+    PRINTF("e8rtp: sV: volume=%d cV=%d\n", volume, currentVolume);
+    return currentVolume;   // for external callers
 }
 
 static void nextCharAfter (const char **bufferPtr, char c) {
@@ -141,7 +145,7 @@ static int getInt (const char **bufferPtr) {
 static int optionValue (const char **bufferPtr, int dflt) {
     int value = 0;
     // skip past '=' (and any spurious characters before '='), but not past ':'
-    nextCharAfter(bufferPtr, '=');
+    nextCharAfter(bufferPtr, '=');  // FIXME use nextCharAfterUntil
     //PRINTF("oV: after '=' buffer='%.10s'\n", *bufferPtr);
     value = getInt(bufferPtr);
     if (value == 0) {
@@ -206,7 +210,7 @@ void setup (int pin, int volume, const char *buffer) {
     
     tuneWholeNoteLength = tuneFraction * 60000 / tuneBeats;   // length of whole note in milliseconds
 
-    PRINTF("e8rtp::setup done d=%d o=%d b=%d wnl=%lu\n", tuneFraction, tuneOctave, tuneBeats, tuneWholeNoteLength);
+    PRINTF("e8rtp::setup done d=%d o=%d b=%d wnl=%lu cV=%d\n", tuneFraction, tuneOctave, tuneBeats, tuneWholeNoteLength, currentVolume);
     firstNote = buffer;
     nextNote = firstNote;
     tuneLoaded = true;
@@ -267,7 +271,7 @@ void getNote (void) {
         pitch = octave8[pitchIndex]; // not adjusted for octave yet 
     }
 
-    // 'dot' could be here (more than one dot is musically correct, but not in original RTTTL spec)
+    // 'dot' could be here
     while (*nextNote == '.') {
         dotCount += 1;
         nextChar(&nextNote);
@@ -287,7 +291,7 @@ void getNote (void) {
         pitch >>= (maxOctave - octave);
     }
 
-    // 'dot' could be here too (more than one dot is musically correct, but not in original RTTTL spec)
+    // 'dot' could be here too
     while (*nextNote == '.') {
         dotCount += 1;
         nextChar(&nextNote);
@@ -306,42 +310,23 @@ void getNote (void) {
         }
     }
 
-    PRINTF("note: note=%c  sharp=%d  octave=%d  pitch=%d  fraction=%d  duration=%d\n", note, sharp, octave, pitch, fraction, duration);
+    //PRINTF("e8rtp: note: note=%c  sharp=%d  octave=%d  pitch=%d  fraction=%d  duration=%d\n", note, sharp, octave, pitch, fraction, duration);
     currentPitch = pitch;
     currentDuration = duration;
 }
 
-/*
-void test (const char *t) {
-    PRINTF(rtttl(t) ? "\nOK" : "\nfail");
-    PRINTF("   d=%i o=%i b=%i rest='%s'\n", tuneFraction, tuneOctave, tuneBeats, firstNote);
-    while (*nextNote != '\0') {
-        getNote();
-        delay(currentDuration + 100);
-    }
-}
-*/
-
-/*
-// Start the next note
-static void playNote (void) {
-    if 
-*/
-    
 static long unsigned noteStart = 0;
 
 void start (void) {
-    tunePlaying = true;
     nextNote = firstNote;
-    //getNote();
-    //analogWriteFreq(currentPitch);
-    //analogWrite(buzzerPin, currentVolume);
-    noteStart = millis() - (long unsigned)(currentDuration + 1);    // put the start time far enough into the pass to trigger the first note
+    noteStart = millis() - (currentDuration + 1);    // put the start time far enough into the past to trigger the first note
     tuneAtStart = false;
+    tunePlaying = true;
     PRINTF("e8rtp: starting melody\n");
+    // (playing will start next time round the loop)
 }
 
-// Set tune to start -- need to call startPlaying() too
+// Set tune to start
 void reset (void) {
     nextNote = firstNote;
     tuneAtStart = true;
@@ -369,7 +354,7 @@ void resume (void) {
 
 // Call this in the main loop to keep things ticking along
 void loop (void) {
-    if (tunePlaying && (millis() - noteStart > (long unsigned)(currentDuration))) {
+    if (tunePlaying && (millis() - noteStart > currentDuration)) {
         analogWrite(buzzerPin, 0);   // sound off
         PRINTF("e8rtp::loop: end of note\n");
         if (*nextNote != '\0') {
@@ -377,9 +362,8 @@ void loop (void) {
             getNote();
             if (currentPitch >= 100) {
                 analogWriteFreq(currentPitch);
-                // TEMP OUT for quiet testing: 
                 analogWrite(buzzerPin, currentVolume);
-                PRINTF("e8rtp::loop: starting to play pitch %d, duration will be %d\n", currentPitch, currentDuration);
+                PRINTF("e8rtp::loop: starting to play pitch %d, duration %lu, volume %d\n", currentPitch, currentDuration, currentVolume);
             }
             noteStart = millis();
         } else {
