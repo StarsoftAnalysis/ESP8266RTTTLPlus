@@ -1,19 +1,25 @@
-// RTTTL Plus
-// FIXME written in standard C -- should run on anything  NO -- now uses PWM, so ESP8266 only (and probably ESP32)
-// -- no hardware timer, volume control
-// integer arithmetic
-// Extensions to Nokia standard:
-// - octaves 1-8 instead of 4-7   FIXME PWM min is 100Hz  max?
-// - any tempo between x and y bpm (instead of set 25, 28, 31, 35, 40, 45, 50, 56, 63, 70, 80, 90, 100, 112, 125, 140, 160, 180, 200, 225, 250, 285, 320, 355, 400, 450, 500, 565, 635, 715, 800 and 900)   TODO range? or apply minimum duration rule as below
-// - note fractions 1/64 and 1/128 (instead of only 1, 2, 4, 8, 16, 32) 
-//   - in fact, accepts any fraction e.g. 3 (for 1/3) to produce triplets.  
-//   - TODO apply minimum length of a note, e.g. 1ms
-// - 'dot' before or after the octave number (and multiple dots as in standard music notation)
-// - more flexible syntax: minimal tune is "::c" -- must have two colons to separate title/settings/notes, but first two sections can be empty.
-//      - dob in any order, or left out (if repeated, last one is used)
-// - robust parsing -- makes the best of what it finds
+// ESP8266RTTTLPlus
+//
+// RTTTL parsing library for ESP8266 and similar microcontrollers.
+//
+// Copyright 2021 Chris Dennis
+//
+//    This program is free software: you can redistribute it and/or modify
+//    it under the terms of the GNU General Public License as published by
+//    the Free Software Foundation, either version 3 of the License, or
+//    (at your option) any later version.
+//
+//    ESP8266RTTTLPlus is distributed in the hope that it will be useful,
+//    but WITHOUT ANY WARRANTY; without even the implied warranty of
+//    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+//    GNU General Public License for more details.
+//
+//    You should have received a copy of the GNU General Public License
+//    along with this software.  If not, see <https://www.gnu.org/licenses/>.
+//
 
 // TODO
+/// tell caller what status is -- playing or finished, or set up but not started
 //  playing the tune: (or beginning it) -- argument to set length of inter-note gap
 //   - and volume
 
@@ -34,6 +40,8 @@ static const int stdOctave   = 5;
 static const int stdBeats    = 60;  // BPM, where one beat is per 'fraction' 
 
 static const int maxVolume = 11;
+static const int minOctave = 3;
+static const int maxOctave = 8;
 
 // Macro for minimal tolower() -- just for ASCII letters
 #define TOLOWER(char) ((char) | 0b00100000)
@@ -54,6 +62,7 @@ static const int maxVolume = 11;
 static int tuneFraction = stdFraction;
 static int tuneOctave   = stdOctave;
 static int tuneBeats    = stdBeats;
+static long unsigned tuneWholeNoteLength = stdFraction * 60000 / stdBeats; // beat length in ms
 static const char *firstNote = NULL;
 static const char *nextNote = NULL;
 enum state { stateUnready, stateReady, statePlaying };
@@ -195,6 +204,9 @@ void setup (int pin, int volume, const char *buffer) {
     nextCharAfter(&buffer, ':');
     //PRINTF("end2: buffer='%.10s'\n", buffer);
     
+    tuneWholeNoteLength = tuneFraction * 60000 / tuneBeats;   // length of whole note in milliseconds
+
+    PRINTF("e8rtp::setup done d=%d o=%d b=%d wnl=%lu\n", tuneFraction, tuneOctave, tuneBeats, tuneWholeNoteLength);
     firstNote = buffer;
     nextNote = firstNote;
     tuneLoaded = true;
@@ -218,19 +230,18 @@ void getNote (void) {
     int  dotCount   = 0;
 
     if (!tuneLoaded || *nextNote == '\0') {
+        // TODO set currentDuration and Pitch to zero??
         return;
     }
 
-    // [d]n[a][m][o][m]
-    // duration
+    // Note length as fraction of a whole note
     fraction = getInt(&nextNote);
     if (fraction == 0) {
-        fraction = tuneFraction; // awkward names FIXME
+        fraction = tuneFraction;
     }
-    // FIXME validate fraction
-    // convert fraction to duration in ms, using the tune's tempo (beats per minute)
-    int tempo = 60000 / tuneBeats;   // ms length of one beat
-    duration = tempo * tuneFraction / fraction;
+    // convert fraction to duration in ms
+    duration = tuneWholeNoteLength / fraction;
+
     // note, with optional sharp sign
     note = TOLOWER(*nextNote);
     nextChar(&nextNote);
@@ -246,6 +257,7 @@ void getNote (void) {
     if (note != 'p') {
         pitchIndex = noteOffset[note - 'a']; 
     }
+
     sharp = (*nextNote == '#');
     if (sharp) {
         nextCharAfter(&nextNote, '#');
@@ -254,30 +266,34 @@ void getNote (void) {
     if (note != 'p') {
         pitch = octave8[pitchIndex]; // not adjusted for octave yet 
     }
+
     // 'dot' could be here (more than one dot is musically correct, but not in original RTTTL spec)
     while (*nextNote == '.') {
         dotCount += 1;
         nextChar(&nextNote);
     }
-    // octave 1..8
+
+    // octave
     octave = getInt(&nextNote);
     if (note != 'p') {
-        if (octave < 1) {
+        if (octave == 0) {
             octave = tuneOctave;
-        } else if (octave > 8) {
-            octave = 8; // TODO constant for this
+        } else if (octave < minOctave) {
+            octave = minOctave;
+        } else if (octave > maxOctave) {
+            octave = maxOctave;
         }
         // Adjust pitch for octave -- divide by 2 for each octave below 8
-        if (octave < 8) {
-            pitch >>= (8 - octave);
-        }
+        pitch >>= (maxOctave - octave);
     }
+
     // 'dot' could be here too (more than one dot is musically correct, but not in original RTTTL spec)
     while (*nextNote == '.') {
         dotCount += 1;
         nextChar(&nextNote);
     }
-    // skip past comma
+
+    // skip past comma (or get to end of tune)
     nextCharAfter(&nextNote, ',');
 
     // Apply all the accumulated dots (more than one is rare)
@@ -322,7 +338,7 @@ void start (void) {
     //analogWrite(buzzerPin, currentVolume);
     noteStart = millis() - (long unsigned)(currentDuration + 1);    // put the start time far enough into the pass to trigger the first note
     tuneAtStart = false;
-    PRINTF("e8rtp: starting melody");
+    PRINTF("e8rtp: starting melody\n");
 }
 
 // Set tune to start -- need to call startPlaying() too
