@@ -9,4 +9,7 @@ namespace e8rtp {
     void resume (void);
     int  setVolume (int volume);
 
+    enum stateEnum { Unready, Ready, Playing, Paused };
+    stateEnum state (void);
+
 } // namespace

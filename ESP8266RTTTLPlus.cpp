@@ -77,11 +77,10 @@ static int tuneBeats    = stdBeats;
 static long unsigned tuneWholeNoteLength = stdFraction * 60000 / stdBeats; // beat length in ms
 static const char *firstNote = NULL;
 static const char *nextNote = NULL;
-enum state { stateUnready, stateReady, statePlaying };
-// or...
-static bool tuneLoaded = false;
-static bool tuneAtStart = true; // FIXME needed?
-static bool tunePlaying = false;
+//static bool tuneLoaded = false;
+//static bool tuneAtStart = true; // FIXME needed?
+//static bool tunePlaying = false;
+static stateEnum currentState = Unready;
 static int currentPitch = 0;
 static long unsigned currentDuration = 0;
 static int currentVolume = maxVolume / 2;
@@ -169,6 +168,10 @@ static int optionValue (const char **bufferPtr, int dflt) {
     return value;
 }
 
+stateEnum state (void) {
+    return currentState;
+}
+
 // Set the output pin, Parse the prefix, set d,o,b, 
 void setup (int pin, int volume, const char *buffer) {
     buzzerPin = pin;    // need validation?
@@ -224,7 +227,8 @@ void setup (int pin, int volume, const char *buffer) {
     PRINTF("e8rtp::setup done d=%d o=%d b=%d wnl=%lu cV=%d\n", tuneFraction, tuneOctave, tuneBeats, tuneWholeNoteLength, currentVolume);
     firstNote = buffer;
     nextNote = firstNote;
-    tuneLoaded = true;
+    //tuneLoaded = true;  // FIXME not needed
+    currentState = Ready;
 }
 
 // pitch for octave 8 (calculation from https://en.wikipedia.org/wiki/Piano_key_frequencies)
@@ -244,7 +248,7 @@ void getNote (void) {
     int  duration   = 0;    // in ms
     int  dotCount   = 0;
 
-    if (!tuneLoaded || *nextNote == '\0') {
+    if ((currentState == Unready) || *nextNote == '\0') {
         // TODO set currentDuration and Pitch to zero??
         return;
     }
@@ -331,8 +335,9 @@ static long unsigned noteStart = 0;
 void start (void) {
     nextNote = firstNote;
     noteStart = millis() - (currentDuration + 1);    // put the start time far enough into the past to trigger the first note
-    tuneAtStart = false;
-    tunePlaying = true;
+    currentState = Playing;
+    //tuneAtStart = false;
+    //tunePlaying = true;
     PRINTF("e8rtp: starting melody\n");
     // (playing will start next time round the loop)
 }
@@ -340,33 +345,37 @@ void start (void) {
 // Set tune to start
 void reset (void) {
     nextNote = firstNote;
-    tuneAtStart = true;
-    tunePlaying = false;
+    //tuneAtStart = true;
+    //tunePlaying = false;
+    currentState = Ready;
 }
 
 // Stop playing immediately
 void stop (void) {
     analogWrite(buzzerPin, 0);   // sound off
     reset();
+    //currentState = Ready;
 }
 
 // Stop, but don't reset -- to nearest note:
 void pause (void) {
     analogWrite(buzzerPin, 0);   // sound off
     // don't reset();
-    tunePlaying = false;
+    //tunePlaying = false;
+    currentState = Paused;
 }
 
 // Carry on after having paused
 void resume (void) {
-    tunePlaying = true;
+    currentState = Playing;
+    //tunePlaying = true;
     // FIXME may need to toy with noteStart here?
 }
 
 
 // Call this in the main loop to keep things ticking along
 void loop (void) {
-    if (tunePlaying && (millis() - noteStart > currentDuration)) {
+    if ((currentState == Playing) && (millis() - noteStart > currentDuration)) {
         analogWrite(buzzerPin, 0);   // sound off
         PRINTF("e8rtp::loop: end of note\n");
         if (*nextNote != '\0') {
@@ -380,7 +389,9 @@ void loop (void) {
             noteStart = millis();
         } else {
             // end of tune
-            tunePlaying = false;
+            reset();
+            //tunePlaying = false;
+            nextNote = firstNote;
             PRINTF("e8rtp::loop: end of tune\n");
         }
     }
