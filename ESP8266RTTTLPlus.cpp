@@ -44,6 +44,17 @@ static const int maxVolume = 11;
 static const int minOctave = 3;
 static const int maxOctave = 8;
 
+//static float voltable[] = {0, 1.961, 2.500, 3.125, 4.000, 5.000, 6.667, 10.000, 15.152, 25.000, 50.000, 50.0};
+//static int voltablei[] = {0, 2, 3, 3, 4, 5, 7, 10, 15, 25, 50, 50};
+
+// Controlling volume via PWM duty cycle is not ideal -- the duty cycle also affects timbre and perceived pitch.
+// Trial and error suggests values for duty up to about 70/1023 are usable,
+// but it depends a lot on the hardware (i.e. the type of buzzer or speaker) too.
+//static int volumeTable[] = {0, 20, 26, 32, 41, 51, 68, 102, 155, 256, 512, 512};
+// These values assume PWM range is 1023.
+static const int PWMRange = 1023;
+static int volumeTable[] = {0, 4, 8, 13, 18, 24, 30, 37, 44, 52, 61, 70};
+
 // Macro for minimal tolower() -- just for ASCII letters
 #define TOLOWER(char) ((char) | 0b00100000)
 
@@ -164,7 +175,7 @@ void setup (int pin, int volume, const char *buffer) {
     pinMode(buzzerPin, OUTPUT);
     analogWrite(buzzerPin, 0);
     setVolume(volume);
-    analogWriteRange(maxVolume);    // FIXME what if something else wants to set it different??
+    analogWriteRange(PWMRange);
 
     //PRINTF("rtttl:1 buffer='%s'\n", buffer);
     //size_t len = strlen(buffer);
@@ -352,6 +363,7 @@ void resume (void) {
     // FIXME may need to toy with noteStart here?
 }
 
+
 // Call this in the main loop to keep things ticking along
 void loop (void) {
     if (tunePlaying && (millis() - noteStart > currentDuration)) {
@@ -362,8 +374,8 @@ void loop (void) {
             getNote();
             if (currentPitch >= 100) {
                 analogWriteFreq(currentPitch);
-                analogWrite(buzzerPin, currentVolume);
-                PRINTF("e8rtp::loop: starting to play pitch %d, duration %lu, volume %d\n", currentPitch, currentDuration, currentVolume);
+                analogWrite(buzzerPin, volumeTable[currentVolume]);
+                PRINTF("e8rtp::loop: starting to play pitch %d, duration %lu, volume %d = %d\n", currentPitch, currentDuration, currentVolume, volumeTable[currentVolume]);
             }
             noteStart = millis();
         } else {
