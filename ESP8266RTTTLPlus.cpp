@@ -18,15 +18,6 @@
 //    along with this software.  If not, see <https://www.gnu.org/licenses/>.
 //
 
-// TODO
-/// tell caller what status is -- playing or finished, or set up but not started
-//  playing the tune: (or beginning it) -- argument to set length of inter-note gap
-//   - and volume
-//  change volume mid tune
-
-// NOTES
-// * tune buffer must remain static in memory while tune is playing
-
 #include <Arduino.h>
 
 #include "ESP8266RTTTLPlus.h"
@@ -44,9 +35,6 @@ static const int maxVolume = 11;
 static const int minOctave = 3;
 static const int maxOctave = 8;
 
-//static float voltable[] = {0, 1.961, 2.500, 3.125, 4.000, 5.000, 6.667, 10.000, 15.152, 25.000, 50.000, 50.0};
-//static int voltablei[] = {0, 2, 3, 3, 4, 5, 7, 10, 15, 25, 50, 50};
-
 // Controlling volume via PWM duty cycle is not ideal -- the duty cycle also affects timbre and perceived pitch.
 // Trial and error suggests values for duty up to about 70/1023 are usable,
 // but it depends a lot on the hardware (i.e. the type of buzzer or speaker) too.
@@ -58,14 +46,14 @@ static int volumeTable[] = {0, 4, 8, 13, 18, 24, 30, 37, 44, 52, 61, 70};
 // Macro for minimal tolower() -- just for ASCII letters
 #define TOLOWER(char) ((char) | 0b00100000)
 
-#define DEBUG
+//#define DEBUG
 #ifdef DEBUG
-//#   define PRINT(...)   print(__VA_ARGS__)
-//#   define PRINTLN(...) println(__VA_ARGS__)
+#   define PRINT(...)   print(__VA_ARGS__)
+#   define PRINTLN(...) println(__VA_ARGS__)
 #   define PRINTF(...)  Serial.printf(__VA_ARGS__)
 #else
-//#   define PRINT(...)
-//#   define PRINTLN(...)
+#   define PRINT(...)
+#   define PRINTLN(...)
 #   define PRINTF(...)
 #endif
 
@@ -77,9 +65,6 @@ static int tuneBeats    = stdBeats;
 static long unsigned tuneWholeNoteLength = stdFraction * 60000 / stdBeats; // beat length in ms
 static const char *firstNote = NULL;
 static const char *nextNote = NULL;
-//static bool tuneLoaded = false;
-//static bool tuneAtStart = true; // FIXME needed?
-//static bool tunePlaying = false;
 static stateEnum currentState = Unready;
 static int currentPitch = 0;
 static long unsigned currentDuration = 0;
@@ -90,20 +75,16 @@ static void nextChar (const char **bufferPtr) {
     // Move the buffer pointer along to the next non-whitespace character,
     // stopping if the end of the buffer is reached.
     //PRINTF("nextChar skipping '%c'\n", **bufferPtr);
-    //*bufferPtr += 1;
     if (**bufferPtr != '\0') {
         *bufferPtr += 1;
     }
-    //while ((**bufferPtr == ' ' || **bufferPtr == '\t' || **bufferPtr == '\n' || **bufferPtr == '\r') && (**bufferPtr != '\0')) {
     while (**bufferPtr != '\0' && isspace(**bufferPtr)) {
-    //while (isspace(**bufferPtr)) {
         //PRINTF("nextChar skipping '%c'\n", **bufferPtr);
         *bufferPtr += 1;
     }
 }
 
 int setVolume (int volume) {
-    PRINTF("e8rtp: sV: previously cV=%d\n", currentVolume);
     if (volume < 0) {
         currentVolume = 0;
     } else if (volume > maxVolume) {
@@ -117,9 +98,8 @@ int setVolume (int volume) {
 
 static void nextCharAfter (const char **bufferPtr, char c) {
     // Skip along the buffer to the character after the one of those specified
-    //PRINTF("nextCharAfter: c='%c'  *bP='%.10s'  **bP='%c'  len=%ld\n", c, *bufferPtr, **bufferPtr, strlen(*bufferPtr));  // FIXME why is the last thing '' ?
+    //PRINTF("nextCharAfter: c='%c'  *bP='%.10s'  **bP='%c'  len=%ld\n", c, *bufferPtr, **bufferPtr, strlen(*bufferPtr));
     while (**bufferPtr != '\0' && **bufferPtr != c) {
-    //while (strlen(*bufferPtr) > 0 && **bufferPtr != c) {
         //PRINTF("nextCharAfter skipping '%c'\n", **bufferPtr);
         nextChar(bufferPtr);
     }
@@ -127,9 +107,10 @@ static void nextCharAfter (const char **bufferPtr, char c) {
     nextChar(bufferPtr);
 }
 
-static void nextCharAfterUntil (const char **bufferPtr, char after, char until) {
+static bool nextCharAfterUntil (const char **bufferPtr, char after, char until) {
     // Skip along the buffer to the character after the one specified,
-    // but don't go past the 'until' character (which might come first)
+    // but don't go past the 'until' character.
+    // Return 'true' if we found the 'after' character.
     //PRINTF("nextCharAfterUntil: after='%c'  until='%c'  *bP='%.10s'\n", after, until, *bufferPtr);
     while (**bufferPtr != '\0' && **bufferPtr != after && **bufferPtr != until) {
         //PRINTF("nextCharAfterUntil skipping '%c'\n", **bufferPtr);
@@ -138,7 +119,9 @@ static void nextCharAfterUntil (const char **bufferPtr, char after, char until) 
     if (**bufferPtr == after) {
         //PRINTF("nextCharAfterUntil skipping '%c'\n", after); // (or \0)
         nextChar(bufferPtr);
+        return true;
     }
+    return false;
 }
 
 static int getInt (const char **bufferPtr) {
@@ -155,16 +138,14 @@ static int getInt (const char **bufferPtr) {
 static int optionValue (const char **bufferPtr, int dflt) {
     int value = 0;
     // skip past '=' (and any spurious characters before '='), but not past ':'
-    nextCharAfter(bufferPtr, '=');  // FIXME use nextCharAfterUntil
-    //PRINTF("oV: after '=' buffer='%.10s'\n", *bufferPtr);
-    value = getInt(bufferPtr);
-    if (value == 0) {
-        value = dflt;
+    if (nextCharAfterUntil(bufferPtr, '=', ':')) {
+        //PRINTF("oV: after '=' buffer='%.10s'\n", *bufferPtr);
+        value = getInt(bufferPtr);
+        if (value == 0) {
+            value = dflt;
+        }
+        //PRINTF("oV: value=%i\n", value);
     }
-    //PRINTF("oV: value=%i\n", value);
-    //nextChar(bufferPtr);// FIXME maybe shouldn't advance if key didn't match
-    // or FIXME assume key does match above
-    //?buffer += 1;
     return value;
 }
 
@@ -180,27 +161,12 @@ void setup (int pin, int volume, const char *buffer) {
     setVolume(volume);
     analogWriteRange(PWMRange);
 
-    //PRINTF("rtttl:1 buffer='%s'\n", buffer);
-    //size_t len = strlen(buffer);
-    //if (len < 3) {  // shortest possible tune is e.g. "::c"
-    //    return false;
-    //}
     // Skip past tune's name and first ':'
     nextCharAfter(&buffer, ':');
-    /*
-    buffer = strchr(buffer, ':');
-    if (buffer == NULL) {
-        return false;
-    }
-    */
-    //PRINTF("rtttl:2a buffer='%s'\n", buffer);
-    //nextChar(&buffer);
-    //PRINTF("rtttl:2 buffer='%.10s'\n", buffer);
+
     // Default options, e.g. "d=4, o=5, b=120"
     // Allow whitespace, and the keys in any order.
     while (*buffer != '\0' && *buffer != ':') {
-        //PRINTF("rtttl:3 looking for dob  buffer=%.10s\n", buffer);
-        //PRINTF("\tswitching on '%c'\n", TOLOWER(*buffer));
         switch (TOLOWER(*buffer)) {
             case 'd':
                 tuneFraction = optionValue(&buffer, stdFraction);
@@ -215,19 +181,15 @@ void setup (int pin, int volume, const char *buffer) {
                 // unexpected character - ignore it
                 break;
         }
-        //PRINTF("rtttl:4 after switch buffer=%.10s\n", buffer);
         nextCharAfterUntil(&buffer, ',', ':');
     }
-    //PRINTF("end1: buffer='%.10s'\n", buffer);
     nextCharAfter(&buffer, ':');
-    //PRINTF("end2: buffer='%.10s'\n", buffer);
     
     tuneWholeNoteLength = tuneFraction * 60000 / tuneBeats;   // length of whole note in milliseconds
 
     PRINTF("e8rtp::setup done d=%d o=%d b=%d wnl=%lu cV=%d\n", tuneFraction, tuneOctave, tuneBeats, tuneWholeNoteLength, currentVolume);
     firstNote = buffer;
     nextNote = firstNote;
-    //tuneLoaded = true;  // FIXME not needed
     currentState = Ready;
 }
 
@@ -336,8 +298,6 @@ void start (void) {
     nextNote = firstNote;
     noteStart = millis() - (currentDuration + 1);    // put the start time far enough into the past to trigger the first note
     currentState = Playing;
-    //tuneAtStart = false;
-    //tunePlaying = true;
     PRINTF("e8rtp: starting melody\n");
     // (playing will start next time round the loop)
 }
@@ -345,8 +305,6 @@ void start (void) {
 // Set tune to start
 void reset (void) {
     nextNote = firstNote;
-    //tuneAtStart = true;
-    //tunePlaying = false;
     currentState = Ready;
 }
 
@@ -354,21 +312,18 @@ void reset (void) {
 void stop (void) {
     analogWrite(buzzerPin, 0);   // sound off
     reset();
-    //currentState = Ready;
 }
 
 // Stop, but don't reset -- to nearest note:
 void pause (void) {
     analogWrite(buzzerPin, 0);   // sound off
     // don't reset();
-    //tunePlaying = false;
     currentState = Paused;
 }
 
 // Carry on after having paused
 void resume (void) {
     currentState = Playing;
-    //tunePlaying = true;
     // FIXME may need to toy with noteStart here?
 }
 
@@ -379,7 +334,7 @@ void loop (void) {
         analogWrite(buzzerPin, 0);   // sound off
         PRINTF("e8rtp::loop: end of note\n");
         if (*nextNote != '\0') {
-            delay(10);  // TODO properly: gap between notes
+            delay(10);  // gap between notes
             getNote();
             if (currentPitch >= 100) {
                 analogWriteFreq(currentPitch);

@@ -1,5 +1,8 @@
 namespace e8rtp {
 
+// Define 'DEBUG' to see lots of output on the serial port.
+//#define DEBUG
+
     void setup  (int pin, int volume, const char *buffer);
     void loop   (void);
     void start  (void);

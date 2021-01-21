@@ -50,7 +50,7 @@ const char webpage[] PROGMEM = R"=====(
           <button type=button class="btn btn-primary mt-3" id=pause onclick='pause()'>Pause</button>
           <button type=button class="btn btn-primary mt-3" id=resume onclick='resume()'>Resume</button>
           <button type=button class="btn btn-primary mt-3" id=stop onclick='stop()'>Stop</button>
-          <p class="h4 mt-3"><label for="volume">Volume:</label> <output class="xxform-control" for="volume" id="volumeOutput"></output>
+          <p class="h4 mt-3"><label for="volume">Volume:</label> <output for="volume" id="volumeOutput"></output>
           <input class="form-control" type="range" name="volume" id="volume" min="0" max="11" step="1" value="5">
           <p class="h5 text-secondary" id=result></p>
         </div>
@@ -72,7 +72,7 @@ function ajaxError (data, status) {
     $("#result").html("Error: " + status + ": " + data);
 }
 
-function setVolume (data, status) {
+function showVolume (data, status) {
     const volume = parseInt(data);
     if (isNaN(volume)) {
         $("#result").textContent = data;
@@ -109,14 +109,14 @@ function getMelody () {
     $.ajax({"url": "getmelody", "success": showMelody, "error": ajaxError});
 }
 
+function setVolume () {
+    const parms = "volume=" + volume.value.toString();
+    $.ajax({"url": "setvolume?" + parms, "success": showVolume, "error": ajaxError});
+}
+
 $(document).ready(function() {
     getMelody();
-
-    volumeInput.addEventListener('input', function() {
-        const parms = "volume=" + volume.value.toString();
-        $.ajax({"url": "setvolume?" + parms, "success": setVolume, "error": ajaxError});
-        //volumeOutput.textContent = volume.value;
-    });
+    volumeInput.addEventListener('input', setVolume);
 });
 
 </script>
