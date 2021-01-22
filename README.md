@@ -69,10 +69,12 @@ All the functions in this library are in the `e8rtp` namespace.
 
 ### e8rtp::state()
 
-`stateEnum state (void);`
+`e8rtp::stateEnum e8rtp::state (void);`
 
 Returns the current state of the player -- return one of:
 
+| State | Description |
+| ----- | ----------- |
 | `e8rtp::Unready` | No melody has been loaded by `e8rtp::setup()`. |
 | `e8rtp::Ready`   | A melody has been loaded and is ready to play, or it has finished playing. |
 | `e8rtp::Playing` | The tune is playing, and can be stopped or paused A melody has been loaded and is ready to play. |
