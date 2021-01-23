@@ -21,12 +21,13 @@ And, of course, the volume control goes all the way up to 11.
 #### Extensions to Nokia standard:
 
 * Allows the title section to be of any length, instead of limiting it to 10 characters.
-* Covers octaves 3-8 instead of just 4-7.  The minimum frequency supported by the ESP8266's software-based PWM is 100Hz.
-* Allows any tempo between x and y bpm (instead of the fixed set of tempos defined by Nokia)   TODO range? or apply minimum duration rule as below
+The title can still only be in ASCII though -- other Unicode characters could confuse the parser.
+* Covers octaves 3-8 instead of just 4-7.  The minimum frequency supported by the ESP8266's software-based PWM is 100Hz,
+which rules out anything lower.
+* Allows any reasonable tempo (instead of the fixed set of tempos defined by Nokia).
 * Note lengths are indicated by denominators, e.g. `4c` for a crotchet (or quarter note).  The library
 does not force the denominator to be one of 1, 2, 4, 8, 16, or 32, so you can use any reasonable integer.  The main use of
 this would be to create triplets with, e.g., `3c`.
-A minimum duration (xxx ms) is applied to each note.
 * Notes can be given in either upper or lower case.
 * White space anywhere in the melody is ignored.
 * [Dots](https://en.wikipedia.org/wiki/Dotted_note) are used to extend the duration of a note by half.  For example `2a.` (a dotted minim) specifies a duration 
@@ -35,9 +36,17 @@ requires the dot to be placed at the end of the note, after the octave number, e
 some other RTTTL-parsing libraries, put the dot /before/ the octave number, e.g. `2C#.6`.  This library accepts dots in either position.
 * The title and default value sections can be empty, so the shortest possible valid melody is `::c`.
 * The duration, octave, and beat in the default value section can be given in any order, or left out entirely.  'Default defaults' will be applied if necessary.
-* The parser does its best to make sense of poorly formed notes.
+* The parser does its best to make sense of poorly formed notes, and carries on regardless.  The resulting tune will play, unless it's completely empty, but even that won't cause an error.
+
+## Hardware
+
+The library assumes that you have a passive buzzer attached to a suitable pin of your microcontroller.
+
+There are plenty of examples of suitable circuits on the web, such as this [Instructable](https://www.instructables.com/How-to-use-a-Buzzer-Arduino-Tutorial/), or kits such as [Brian Lough's alarm clock](http://www.blough.ie/bac/).
 
 ## Example
+
+Here's a minimal programme that uses the library.  
 
 ```
 #include <ESP8266RTTTLPlus.h>
@@ -55,7 +64,7 @@ void loop (void) {
 
 For other examples, see the `examples` directory above.
 
-And for a complete project that uses ESP8266RTTTLPlus, See this [alarm clock software](https://github.com/StarsoftAnalysis/arduino-alarm-clock).
+And for a complete project that uses ESP8266RTTTLPlus, see this [alarm clock software](https://github.com/StarsoftAnalysis/arduino-alarm-clock).
 
 ## Installation
 
@@ -63,7 +72,6 @@ Download ESP8266RTTTLPlus into your Arduino library directory.  It's not availab
 
 ## Usage
 
-Set the output pin that the buzzer is attached to.  You don't need to set it as an output pin -- `e8rtp::setup()` will do that.
 
 All the functions in this library are in the `e8rtp` namespace.
 
@@ -86,9 +94,10 @@ Returns the current state of the player -- return one of:
 
 Set up the player by specifying the pin that the buzzer is connected to, the initial volume level (0..11), and the 
 character string containing the melody.
+You don't need to set the pin as an output -- `e8rtp::setup()` will do that.
 
 Note that the character string must remain static in memory while the melody is being played, because
-the player uses a pointer to it, rather than copying into its own storage.
+the player uses a pointer to it, rather than copying the melody into its own storage.
 
 Example:
 ```
@@ -123,7 +132,7 @@ Pause the melody, ready to be `e8rtp::resume()`d later.
 
 `void e8rtp::resume (void)`
 
-Continue palying the melody after being `e8rtp::pause()`d, starting with the next note.
+Continue playing the melody after being `e8rtp::pause()`d, starting with the next note.
 
 ## e8rtp::setVolume(int volume) 
 
