@@ -69,7 +69,7 @@ static stateEnum currentState = Unready;
 static int currentPitch = 0;
 static long unsigned currentDuration = 0;
 static int currentVolume = maxVolume / 2;
-static int buzzerPin = D1;  // reasonable default?
+static int buzzerPin = 4;  // reasonable default?
 
 static void nextChar (const char **bufferPtr) {
     // Move the buffer pointer along to the next non-whitespace character,
